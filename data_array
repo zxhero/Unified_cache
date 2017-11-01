@@ -1,0 +1,73 @@
+module unified_cache_data_array
+#(
+        parameter CACHE_BLOCK_SIZE_IN_BITS = 2,
+        parameter NUMBER_WAYS              = 2,
+        parameter NUMBER_SETS              = 2,
+        parameter SET_PTR_WIDTH_IN_BITS    = 1
+)
+(
+        input                                         reset_in,
+        input                                         clk_in,
+
+        input      [NUMBER_WAYS              - 1 : 0] way_select_in,
+
+        input                                         access_en_in,
+        input                                         write_en_in,
+        
+        input      [SET_PTR_WIDTH_IN_BITS    - 1 : 0] access_set_addr_in,
+        output     [CACHE_BLOCK_SIZE_IN_BITS - 1 : 0] read_data_out,    
+        input      [CACHE_BLOCK_SIZE_IN_BITS - 1 : 0] write_data_in
+);
+
+wire [CACHE_BLOCK_SIZE_IN_BITS  * NUMBER_WAYS - 1 : 0] data_to_mux;
+
+generate
+        genvar gen;
+
+        for(gen = 0; gen < NUMBER_WAYS; gen = gen + 1)
+        begin
+                
+                single_port_blockram
+                #(.SINGLE_ELEMENT_SIZE_IN_BITS(CACHE_BLOCK_SIZE_IN_BITS), .NUMBER_SETS(NUMBER_SETS), .SET_PTR_WIDTH_IN_BITS(SET_PTR_WIDTH_IN_BITS))
+                data_way
+                (
+                        .clk_in             (clk_in),
+                        .reset_in           (reset_in),
+
+                        .access_en_in         (read_en_in & way_select_in[gen]),
+                        .write_en_in        (write_en_in  & way_select_in[gen]),
+                        
+                        .access_set_addr_in   (read_set_addr_in),
+
+                        .write_element_in   (write_data_in),
+                        .read_element_out   (data_to_mux[(gen+1) * CACHE_BLOCK_SIZE_IN_BITS - 1 : gen * CACHE_BLOCK_SIZE_IN_BITS])
+                );
+
+        end  
+ 
+endgenerate
+
+reg [NUMBER_WAYS - 1 : 0] way_select_stage;
+always @(posedge clk_in or posedge reset_in)
+begin
+        if(reset_in)
+        begin
+                way_select_stage <= {(NUMBER_WAYS){1'b0}};
+        end
+        
+        else
+        begin
+                way_select_stage <= way_select_in;
+        end
+end
+
+mux_decoded_8
+#(.NUMBER_WAYS(NUMBER_WAYS), .SINGLE_ELEMENT_SIZE_IN_BITS(CACHE_BLOCK_SIZE_IN_BITS))
+mux_8
+(
+        .way_packed_in (data_to_mux),
+        .sel_in        (way_select_stage),
+        .way_packed_out(read_data_out)
+);
+
+endmodule
